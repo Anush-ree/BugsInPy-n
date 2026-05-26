@@ -63,11 +63,43 @@ def find_bugsinpy_test_duplicates():
 
     identical_test_bugs = {tests: bugs for tests, bugs in test_clusters.items() if len(bugs) > 1}
     
+    # Generate markdown report
+    markdown_output = generate_markdown_report(identical_test_bugs)
+    
+    # Write to file
+    output_file = "duplicate_bugs_report.md"
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(markdown_output)
+    
     print(f"\nFound {len(identical_test_bugs)} clusters of identical bugs based on test overlap:")
+    print(f"Report saved to: {output_file}")
     print("-" * 50)
-    for tests, bugs in identical_test_bugs.items():
-        print(f"Bugs: {bugs}")
-        print(f"Shared Failing Tests: {tests}\n")
+    print(markdown_output)
+
+
+def generate_markdown_report(identical_test_bugs):
+    md = "# BugsInPy Duplicate Bugs Report\n\n"
+    md += f"## Summary\n\n"
+    md += f"Found **{len(identical_test_bugs)}** clusters of identical bugs based on test overlap.\n\n"
+    
+    if not identical_test_bugs:
+        md += "No duplicate bugs found.\n"
+        return md
+    
+    md += "---\n\n"
+    
+    for idx, (tests, bugs) in enumerate(identical_test_bugs.items(), 1):
+        md += f"### Cluster {idx}\n\n"
+        md += f"**Number of Bugs:** {len(bugs)}\n\n"
+        md += f"**Bugs:**\n"
+        for bug in sorted(bugs):
+            md += f"- {bug}\n"
+        md += f"\n**Shared Failing Tests:**\n"
+        for test in tests:
+            md += f"- `{test}`\n"
+        md += "\n---\n\n"
+    
+    return md
 
 if __name__ == "__main__":
     find_bugsinpy_test_duplicates()

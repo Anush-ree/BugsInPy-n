@@ -2,3 +2,5 @@
 projects/pandas/bugs/Bugs info.xlsx
 temp/*
 !temp/.gitkeep
+
+.Ds_Store
