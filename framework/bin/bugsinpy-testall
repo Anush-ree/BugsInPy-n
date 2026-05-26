@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/opt/homebrew/bin/bash
 
 ### bugsinpy-testall reproduces all the bugs
 # Similar to <repo>/verify.sh included in some projects.
@@ -102,11 +102,11 @@ for project_name in $projects; do
         # Cleanup requirements.txt from unwanted spaces
         # dos2unix is required to make sure requirements.txt is always the correct encoding
         requirements="$work_dir/bugsinpy_requirements.txt"
-        sed -i -e '/^\s*#.*$/d' -e '/^\s*$/d' "$requirements"
+        sed -i "" -e '/^\s*#.*$/d' -e '/^\s*$/d' "$requirements"
         dos2unix $requirements &>/dev/null
 
         # Add environment
-        . /opt/conda/etc/profile.d/conda.sh &>> $work_dir/logs.txt
+        . /opt/homebrew/Caskroom/miniconda/base/etc/profile.d/conda.sh &>> $work_dir/logs.txt
         # Generate unique hash for the current enviroment
         bug_python_version=$(grep -o "3\..\.." $bug_info)
         conda_env_name=$(cat <(echo $bug_python_version) "$requirements" | md5sum | cut -d' ' -f 1)

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/opt/homebrew/bin/bash
 usage="-p project_name
              The name of the project from bugsinpy.
         -i bug_id

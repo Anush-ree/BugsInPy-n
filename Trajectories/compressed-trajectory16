@@ -1,0 +1,277 @@
+# Compressed Trajectory: Matplotlib Colorbar Integer Overflow Bug
+
+## Issue Statement
+
+Matplotlib has a bug in colorbar normalization for integer image data.
+
+- **Buggy file:** `lib/matplotlib/transforms.py`
+- **Failing test file:** `lib/matplotlib/tests/test_colorbar.py`
+- **Relevant failing test:** `test_colorbar_int`
+- **Bug type:** numeric overflow during range normalization
+- **Trigger:** fixed-width NumPy integer scalar values, especially `np.int16`
+
+The failing test demonstrates that colorbar limits derived from integer image data can overflow or collapse to incorrect fallback values during normalization.
+
+---
+
+## 1. Environment Check
+
+### Thought
+
+Before debugging, verify that the Matplotlib test environment is usable. The required check is importing `ft2font`. If this fails, the problem should be treated as an environment issue rather than the target bug.
+
+### Action
+
+```bash
+python -c "from matplotlib import ft2font; print('env OK')"
+```
+
+### Output
+
+```text
+env OK
+```
+
+### Result
+
+The environment was usable, so debugging continued.
+
+---
+
+## 2. Reproduce the Bug
+
+### Thought
+
+Run the provided colorbar test file with pytest to confirm the failure and identify the exact failing inputs.
+
+### Action
+
+```bash
+pytest lib/matplotlib/tests/test_colorbar.py
+```
+
+### Relevant Output
+
+The relevant failures occurred in:
+
+```text
+lib/matplotlib/tests/test_colorbar.py::test_colorbar_int[clim0]
+lib/matplotlib/tests/test_colorbar.py::test_colorbar_int[clim1]
+```
+
+The failing inputs were color limits converted to `np.int16`, including values around:
+
+```text
+(-20000, 20000)
+(-32768, 0)
+```
+
+Observed symptoms included:
+
+```text
+RuntimeWarning: overflow encountered in short_scalars
+```
+
+and incorrect fallback normalization limits, where a valid integer range was replaced by a small artificial range.
+
+### Reproduction Summary
+
+The relevant failure is not a rendering problem. It is a numeric range-handling problem triggered by fixed-width integer scalar values during colorbar normalization.
+
+---
+
+## 3. What Triggered the Bug
+
+The bug is triggered when narrow NumPy integer scalar values reach range-normalization logic without being protected from fixed-width integer overflow.
+
+Problematic inputs include `np.int16` values near the edge of the dtype’s representable range.
+
+The failure mode is:
+
+1. integer image data is used to derive normalization limits,
+2. those limits reach range-checking code,
+3. arithmetic is performed while values still behave like narrow integer scalars,
+4. overflow or incorrect range classification occurs,
+5. colorbar normalization falls back to incorrect limits.
+
+This makes the colorbar treat a valid range as if it were singular or numerically unsafe.
+
+---
+
+## 4. Test File Localization
+
+### Thought
+
+Use the pytest failure and traceback to identify the test that defines the expected behavior.
+
+### Location
+
+```text
+lib/matplotlib/tests/test_colorbar.py
+```
+
+Relevant test:
+
+```text
+test_colorbar_int
+```
+
+### Behavior Under Test
+
+The test creates an image from `np.int16` endpoint values and then creates a colorbar.
+
+Expected behavior:
+
+```text
+The image normalization limits should preserve the original color-limit values.
+```
+
+### How This Helped
+
+The test clarified that Matplotlib should preserve the numeric range represented by the image data. The bug is not that the colorbar cannot be drawn; the bug is that the range-checking path mishandles integer scalar arithmetic before the colorbar is fully constructed.
+
+---
+
+## 5. Source Localization
+
+### Thought
+
+Follow the traceback from the failing test into the source code. The error occurs during colorbar creation and then reaches a generic range-normalization helper.
+
+### Traceback Path
+
+The relevant path was:
+
+```text
+test_colorbar.py::test_colorbar_int
+  -> fig.colorbar(im)
+  -> lib/matplotlib/figure.py
+  -> lib/matplotlib/colorbar.py
+  -> ColorbarBase._process_values()
+  -> a range-normalization utility in lib/matplotlib/transforms.py
+```
+
+### Buggy File
+
+```text
+lib/matplotlib/transforms.py
+```
+
+### Relevant Area
+
+The traceback points into a utility in `transforms.py` that is responsible for making numeric intervals safe for plotting. This area checks whether a pair of endpoints forms a usable range or whether the range needs to be adjusted.
+
+### Suggested Investigation
+
+Inspect the traceback location in `lib/matplotlib/transforms.py` and read the surrounding helper that handles endpoint/range normalization. Look for internal range arithmetic that assumes the endpoints can be safely compared or combined.
+
+### Localization Summary
+
+- The colorbar path sends normalization limits through a generic range-normalization helper.
+- The failing inputs arrive as fixed-width integer scalar values.
+- The helper performs internal range checks assuming arithmetic is safe.
+- That assumption breaks for narrow integer dtypes.
+- The problem is in numeric range-safety logic, not in image rendering.
+
+### How This Helped
+
+This localized the bug to the point where colorbar-derived limits are checked for range safety. The traceback showed that the problem is not in the test, not in image construction, and not primarily in rendering. It is in the numeric range-handling path used during colorbar processing.
+
+---
+
+## 6. Root Cause
+
+```text
+A range-normalization helper in transforms.py performs range checks on
+endpoint values without first guarding against fixed-width numeric scalar
+behavior. When the inputs are narrow integer scalars, such as np.int16
+values, internal arithmetic can overflow the dtype's representable range.
+
+This can produce warnings during colorbar normalization or cause the
+helper to incorrectly classify a valid interval as unsafe/singular,
+leading to fallback limits.
+
+The fix requires ensuring arithmetic safety before range checks are
+performed.
+```
+
+---
+
+## 7. Approach to the Fix
+
+### Thought
+
+The fix should be minimal and localized to the range-normalization helper reached from the traceback. The helper should not allow narrow integer scalar behavior to affect its internal decision about whether a range is valid.
+
+### Fix Approach
+
+```text
+A small localized change inside the range-normalization helper resolved
+the issue. The change ensured that internal range checks were performed
+in a way that avoids fixed-width integer overflow.
+
+No changes to the test file or unrelated source files were needed.
+```
+
+### Why This Addresses the Root Cause
+
+The failure happens before the helper can correctly decide whether an interval is valid. Making the range checks arithmetic-safe prevents valid integer ranges from being misclassified and prevents overflow warnings from narrow integer scalar operations.
+
+---
+
+## 8. Verification
+
+### Thought
+
+Rerun the failing test file to confirm that the integer-related colorbar failures are resolved.
+
+### Action
+
+```bash
+pytest lib/matplotlib/tests/test_colorbar.py
+```
+
+### Relevant Result
+
+The integer-related failures disappeared:
+
+```text
+test_colorbar_int[clim0] PASSED
+test_colorbar_int[clim1] PASSED
+```
+
+A separate image-comparison failure may still appear if the environment has a FreeType mismatch:
+
+```text
+test_colorbar_positioning[png]
+```
+
+The test run may also report:
+
+```text
+Matplotlib is not built with the correct FreeType version to run tests.
+```
+
+### Verification Summary
+
+- The targeted integer normalization bug was resolved.
+- The relevant `test_colorbar_int` cases passed.
+- Remaining image-comparison failures caused by FreeType mismatch were treated as unrelated environment/rendering noise.
+
+---
+
+## 9. Mistakes and Recoveries
+
+### Mistake 1: First edit introduced a syntax/indentation problem
+
+The first attempt to modify the localized helper placed the change incorrectly and caused an indentation-related failure during test startup.
+
+### Recovery
+
+The agent re-examined the surrounding function structure, corrected the placement of the change, and reran the tests.
+
+### Lesson
+
+For small localized fixes inside existing conditional logic, inspect the surrounding function after editing before relying on the test run. Placement matters as much as the change itself.
+
+---

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/opt/homebrew/bin/bash
 usage="-w work_dir
              The working directory to compile the project. Default will be the current directory.
 "
@@ -53,9 +53,9 @@ fi
 rm -r -f env/
 
 ###Add environment
-. /opt/conda/etc/profile.d/conda.sh
+. /opt/homebrew/Caskroom/miniconda/base/etc/profile.d/conda.sh
 # Cleanup requirements.txt from unwanted spaces
-sed -i -e '/^\s*#.*$/d' -e '/^\s*$/d' "$work_dir/bugsinpy_requirements.txt"
+sed -i "" -e '/^\s*#.*$/d' -e '/^\s*$/d' "$work_dir/bugsinpy_requirements.txt"
 # dos2unix is required to make sure requirements.txt is always the correct encoding
 dos2unix $work_dir/bugsinpy_requirements.txt &>/dev/null
 # Generate unique hash for the current enviroment
